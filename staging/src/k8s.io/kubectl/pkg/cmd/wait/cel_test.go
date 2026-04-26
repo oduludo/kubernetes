@@ -33,6 +33,18 @@ func TestRunCelCommandOnUnstructuredMapping(t *testing.T) {
 	}
 }
 
+func TestRunCelCommandOnUnstructuredMapping_DeepNestedField(t *testing.T) {
+	u := createUnstructured(t, podYAML)
+	val, err := runCelCommandOnUnstructuredMapping(u, cel.DynType, "pod", "pod.spec.containers[0].resources.limits.cpu")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if val.Value() != "500m" {
+		t.Fatalf("unexpected value: %v", val.Value())
+	}
+}
+
 func TestCELWait_checkConditionMet(t *testing.T) {
 	u := createUnstructured(t, podYAML)
 	c := CELWait{

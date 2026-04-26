@@ -96,11 +96,12 @@ func runCelCommandOnNativeType(obj *unstructured.Unstructured, want *cel.Type, c
 // mapping type (string to any). Lookups follow the YAML structure, e.g. `pod.metadata.name`.
 // runCelCommandOnUnstructuredMapping ever only handles a single resource at a time, never a list of resources.
 func runCelCommandOnUnstructuredMapping(obj *unstructured.Unstructured, want *cel.Type, kind string, command string) (ref.Val, error) {
-	klog.Infof("Loading variable `%s` into CEL environment.", kind)
-	env, err := cel.NewEnv(
+	opts := []cel.EnvOption{
 		cel.Variable(kind, cel.MapType(cel.StringType, cel.DynType)),
-		// TODO: Implement common functionality for prettier queries
-	)
+	}
+	opts = append(opts, celLibraryFunctions()...)
+
+	env, err := cel.NewEnv(opts...)
 
 	if err != nil {
 		return nil, err
