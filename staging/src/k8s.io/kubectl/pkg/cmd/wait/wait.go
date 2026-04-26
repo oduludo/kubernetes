@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -88,7 +87,10 @@ var (
 		# Wait for pod "busybox1" to reach the "Ready" status OR for its containers to report a "False" readiness state
 		until kubectl wait pod/busybox1 --for=condition=Ready --timeout=1s 2>/dev/null || \
 		kubectl wait pod/busybox1 --for=condition=ContainersReady=False --timeout=1s 2>/dev/null; \
-		do echo "Checking conditions..."; sleep 1; done`))
+		do echo "Checking conditions..."; sleep 1; done
+
+		# (CEL) Wait for job "worker" to have more than two successful completions
+		kubectl wait job/worker --for=cel='pod.status.succeeded > 2'`))
 )
 
 // errNoMatchingResources is returned when there is no resources matching a query.
@@ -239,6 +241,12 @@ func conditionFuncsFor(conditions []string, errOut io.Writer) ([]ConditionFunc, 
 				jsonPathParser: j,
 				errOut:         errOut,
 			}.IsJSONPathConditionMet)
+		case strings.HasPrefix(cond, "cel="):
+			celInput := strings.TrimPrefix(cond, "cel=")
+			condFuncs = append(condFuncs, CELWait{
+				query:  celInput,
+				errOut: errOut,
+			}.IsCELConditionMet)
 		default:
 			return nil, fmt.Errorf("unrecognized condition: %q", cond)
 		}

@@ -1968,3 +1968,84 @@ func TestConditionalWaitCheckConditionHandlesMalformedConditions(t *testing.T) {
 		})
 	}
 }
+
+func TestCELConditions(t *testing.T) {
+	scheme := runtime.NewScheme()
+	listMapping := map[schema.GroupVersionResource]string{
+		{Group: "group", Version: "version", Resource: "theresource"}: "TheKindList",
+	}
+
+	defaultInfos := []*resource.Info{
+		{
+			Mapping: &meta.RESTMapping{
+				Resource: schema.GroupVersionResource{Group: "group", Version: "version", Resource: "theresource"},
+			},
+			Name:      "name-foo",
+			Namespace: "ns-foo",
+		},
+	}
+
+	defaultFakeClientFn := func() *dynamicfakeclient.FakeDynamicClient {
+		fakeClient := dynamicfakeclient.NewSimpleDynamicClientWithCustomListKinds(scheme, listMapping)
+		fakeClient.PrependReactor("list", "theresource", func(action clienttesting.Action) (handled bool, ret runtime.Object, err error) {
+			return true, newUnstructuredList(
+				newUnstructured("group/version", "TheKind", "ns-foo", "name-foo"),
+			), nil
+		})
+		return fakeClient
+	}
+
+	// NOTE: `thekind` variable in CEL expressions corresponds to the kind passed into the newUnstructured() call, made
+	// lowercase. That lowercase kind is loaded into the CEL environment.
+	tests := []struct {
+		name        string
+		infos       []*resource.Info
+		fakeClient  func() *dynamicfakeclient.FakeDynamicClient
+		timeout     time.Duration
+		query       string
+		expectedErr string
+	}{
+		{
+			name:       "name match",
+			infos:      defaultInfos,
+			query:      `thekind.metadata.name == "name-foo"`,
+			fakeClient: defaultFakeClientFn,
+			timeout:    5 * time.Second,
+		},
+		{
+			name:        "name mismatch",
+			infos:       defaultInfos,
+			query:       `thekind.metadata.name == "name-bar"`,
+			fakeClient:  defaultFakeClientFn,
+			timeout:     5 * time.Second,
+			expectedErr: "timed out waiting for the condition on theresource/name-foo",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fakeClient := test.fakeClient()
+			o := &WaitOptions{
+				ResourceFinder: genericclioptions.NewSimpleFakeResourceFinder(test.infos...),
+				DynamicClient:  fakeClient,
+				Timeout:        test.timeout,
+
+				Printer:     printers.NewDiscardingPrinter(),
+				ConditionFn: []ConditionFunc{CELWait{query: test.query, errOut: io.Discard}.IsCELConditionMet},
+				IOStreams:   genericiooptions.NewTestIOStreamsDiscard(),
+			}
+			err := o.RunWaitContext(t.Context())
+			switch {
+			case err == nil && len(test.expectedErr) == 0:
+			case err != nil && len(test.expectedErr) == 0:
+				t.Fatal(err)
+			case err == nil && len(test.expectedErr) != 0:
+				t.Fatalf("missing: %q", test.expectedErr)
+			case err != nil && len(test.expectedErr) != 0:
+				if !strings.Contains(err.Error(), test.expectedErr) {
+					t.Fatalf("expected %q, got %q", test.expectedErr, err.Error())
+				}
+			}
+		})
+	}
+}
