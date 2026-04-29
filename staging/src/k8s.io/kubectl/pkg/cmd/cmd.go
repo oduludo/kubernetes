@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 
 	"github.com/spf13/cobra"
+	"k8s.io/kubectl/pkg/cmd/cel"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
@@ -316,6 +317,7 @@ func NewKubectlCommand(o KubectlOptions) *cobra.Command {
 				replace.NewCmdReplace(f, o.IOStreams),
 				wait.NewCmdWait(f, o.IOStreams),
 				kustomize.NewCmdKustomize(o.IOStreams),
+				cel.NewCelCommand(f, o.IOStreams),
 			},
 		},
 		{
